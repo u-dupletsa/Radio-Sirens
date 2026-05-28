@@ -39,7 +39,7 @@ df_binaries = inj_df.copy()
 df_binaries['SNR'] = snr_all
 
 df_binaries.to_hdf(
-    'results/bbh_1e7_injections_for_gwfish_SNR_5_300_Msol_SNR.hdf5',
+    'results/bbh_1e7_injections_for_gwfish_SNR_5_300_Msol.hdf5',
     key='df',
     mode='w'
 )
