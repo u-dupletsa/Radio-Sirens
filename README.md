@@ -12,6 +12,6 @@ The starting and output dataset of this repository is released on Zenodo:
 The Zenodo record provides a summary and overview of the scripts with the instructions to reproduce the paper's results.
 
 
-The following repository is also link to Zenodo through:
+The following repository is also linked to Zenodo through:
 [![DOI](https://zenodo.org/badge/1228673148.svg)](https://doi.org/10.5281/zenodo.20548370)
 
