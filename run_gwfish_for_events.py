@@ -5,13 +5,11 @@ import pandas as pd
 ##################################################################################
 # GENERAL SETTINGS for gw data file to analyze
 ##################################################################################
-hi_probability = True
-my_random_seed = 1
+my_random_seed = 123
 nside          = 16
-# choose between 'HI' and 'NoHI':
-hi_probability = 'HI' 
-#hi_probability = 'NoHI'
-gw_data_file = 'bbh_1e4_events_for_gwfish_rs%s_nside%s_%s' %(my_random_seed, nside, hi_probability)
+# choose between 'HI', 'star' and 'NoHI':
+probability = 'star' 
+gw_data_file = 'bbh_1e4_events_for_gwfish_rs%s_nside%s_%s' %(my_random_seed, nside, probability)
 waveform_model = 'IMRPhenomXPHM'
 f_ref = 20.
 ##################################################################################
@@ -35,7 +33,7 @@ gw.fishermatrix.analyze_and_save_to_txt(network = network,
                                 parameter_values  = df_binaries,
                                 fisher_parameters = fisher_parameters,
                                 sub_network_ids_list = [[0]],
-                                population_name = 'bbh_1e4_events_rs%s_nside%s_%s' %(my_random_seed, nside, hi_probability),
+                                population_name = 'bbh_1e4_events_rs%s_nside%s_%s' %(my_random_seed, nside, probability),
                                 waveform_model = 'IMRPhenomXPHM',
                                 save_matrices = True,
                                 use_duty_cycle = False,
