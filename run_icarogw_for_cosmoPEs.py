@@ -5,16 +5,13 @@ import icarogw
 import healpy as hp
 import numpy as np
 from  astropy.cosmology import FlatLambdaCDM
-import matplotlib.pyplot as plt
-from tqdm import tqdm
 import pandas as pd
 import bilby
-import GWFish.modules as gw
 from get_samples_from_gwfish import *
 import os
 import pickle
 import multiprocessing
-
+import sys
 
 def main():
 
@@ -22,15 +19,37 @@ def main():
     ##########################################################################
     # INITIAL CONFIGURATION
     ##########################################################################
+
     H0_value = 67.7
-    nside = 16
+    nside = int(sys.argv[1])
+    npix = hp.nside2npix(nside)
+    lmax = 3*nside 
+
+    # redhsift range for reference
+    zmin = 0.005
+    zmax = 3.025
+
+
+    use_HI_in_likelihood = True
+    additional_tag = str(sys.argv[2])  # to distinguish runs with different settings, e.g. with or without foreground, wth HI mass LoS priors, etc
+    map_name = 'map4icaro_lmax' + str(lmax) + '_zmin' + str(zmin) + '_zmax' + str(zmax) + '_nside' + str(nside) + '_' + str(additional_tag)
+
+
+    # number of GW events
+    num_gw_obs_events = None          # None = all events
+    random_event_selection = False
+    if random_event_selection:
+        event_selection_seed = int(sys.argv[3])
+
+    # reproducibility and gw settings
     random_seed_gw_run = 1
     snr_thr = 150
-    use_HI_in_likelihood = False
     use_HI_in_gw_data = True
-    inference_on_bias_parameters = False
+    which_HI = 'star' # 'star' or 'HI' (the latter is based on the number of DM halos in a given pixel)
+    inference_on_bias_parameters = True
     perfect_PEs = False
-    additional_tag = 'test'
+
+    
     # icarogw settings
     my_nparallel=5000 # number of PE samples per each GW event (1 if perfect_PEs=True)
     my_neffPE=10 # number of effective PEs (-1 if perfect_PEs=True)
@@ -42,33 +61,28 @@ def main():
         cosmoPE_lbl = 'NoHI'
 
     if use_HI_in_gw_data:
-        gw_lbl = 'HI'
+        gw_lbl = which_HI
     else:
         gw_lbl = 'NoHI'
     ##########################################################################
     ##########################################################################
 
-
+    print('Using the HI map given by: ', map_name)
 
     ##########################################################################
     # Reference cosmology and maps
     ##########################################################################
-    npix = hp.nside2npix(nside)
-    lmax = 3*nside 
 
-    # redhsift range for reference
-    zmin = 0.005
-    zmax = 3.025
 
     # Reference cosmology
     cosmo_ref = icarogw.cosmology.astropycosmology(zmax=20.)
     cosmo_ref.build_cosmology(FlatLambdaCDM(H0=H0_value,Om0=0.308)) 
 
-    PATH_TO_DENSITY_MATRIX = 'hi_data/'
+    PATH_TO_DENSITY_MATRIX = '/storage/gpfs_data/eintls/BBH_cosmo_sim/hi_data/'
     if use_HI_in_likelihood:
-        density_matrix = pd.read_hdf(PATH_TO_DENSITY_MATRIX + 'map4icaro_lmax' + str(lmax) + '_zmin' + str(zmin) + '_zmax' + str(zmax) + '_nside' + str(nside) + '.hdf5').to_numpy()
+        density_matrix = pd.read_hdf(PATH_TO_DENSITY_MATRIX + map_name + '.hdf5').to_numpy()
     else:
-        density_matrix = pd.read_hdf(PATH_TO_DENSITY_MATRIX + 'map4icaro_lmax' + str(lmax) + '_zmin' + str(zmin) + '_zmax' + str(zmax) + '_nside' + str(nside) + '.hdf5').to_numpy()
+        density_matrix = pd.read_hdf(PATH_TO_DENSITY_MATRIX + map_name + '.hdf5').to_numpy()
         density_matrix = np.ones_like(density_matrix)
 
     redshift_grid = np.array([0.005, 0.015, 0.035, 0.06 , 0.085, 0.11 , 0.135, 0.17 , 0.205,
@@ -85,7 +99,7 @@ def main():
     # INJECTION PART
     ##########################################################################
     # read injection results
-    df_inj_snr = pd.read_hdf('gw_data/bbh_1e7_injections_for_gwfish_SNR_results_5_300_Msol.hdf5')
+    df_inj_snr = pd.read_hdf('/storage/gpfs_data/eintls/BBH_cosmo_sim/gw_data/bbh_1e7_injections_for_gwfish_SNR_results_5_300_Msol.hdf5')
     injections_dict = {'luminosity_distance':df_inj_snr['luminosity_distance'].to_numpy(),
                     'right_ascension':df_inj_snr['ra'].to_numpy(),
                     'declination':df_inj_snr['dec'].to_numpy(),
@@ -100,15 +114,14 @@ def main():
     inj.pixelize(nside)
     ##########################################################################
 
-
     ##########################################################################
     # PE part
     ##########################################################################
-    # Results from Fisher runs
-    error_file = 'gw_data/gwfish_results_raw/Errors_ET_cryo_10_bbh_1e4_events_rs%s_nside%s_%s_SNR%s.txt' %(random_seed_gw_run, nside, gw_lbl, snr_thr)
-    fisher_file = 'gw_data/gwfish_results_raw/fisher_matrices_ET_cryo_10_bbh_1e4_events_rs%s_nside%s_%s_SNR%s.npy' %(random_seed_gw_run, nside, gw_lbl, snr_thr)
-    inv_fisher_file = 'gw_data/gwfish_results_raw/inv_fisher_matrices_ET_cryo_10_bbh_1e4_events_rs%s_nside%s_%s_SNR%s.npy' %(random_seed_gw_run, nside, gw_lbl, snr_thr)
     if perfect_PEs:
+
+        # Results from Fisher runs
+        error_file = '/storage/gpfs_data/eintls/BBH_cosmo_sim/gw_data/gwfish_results_raw/Errors_ET_cryo_10_bbh_1e4_events_rs%s_nside%s_%s_SNR%s.txt' %(random_seed_gw_run, nside, gw_lbl, snr_thr)
+
         # read the gwfish results
         lbs = ['SNR', 'mass_1', 'mass_2', 'luminosity_distance', 'theta_jn', 'ra', 'dec',
         'psi', 'phase', 'geocent_time', 'a_1', 'a_2', 'tilt_1', 'tilt_2',
@@ -118,6 +131,19 @@ def main():
             'err_tilt_1', 'err_tilt_2', 'err_phi_12', 'err_phi_jl', 'err_sky_loc']
         gwfish_errs = pd.read_csv(error_file, names=lbs, skiprows=1, delimiter=' ')  
         gwfish_obs = gwfish_errs[gwfish_errs['SNR'] > snr_thr]
+
+        # Select events after applying the SNR threshold
+        if num_gw_obs_events is not None:
+            if num_gw_obs_events < 0:
+                raise ValueError("num_gw_obs_events must be non-negative or None (all available events)")
+
+            if random_event_selection:
+                gwfish_obs = gwfish_obs.sample(
+                    n=min(num_gw_obs_events, len(gwfish_obs)),
+                    random_state=event_selection_seed
+                )
+            else:
+                gwfish_obs = gwfish_obs.head(num_gw_obs_events)
 
         posteriors = {}
         for key in range(len(gwfish_obs)):
@@ -131,36 +157,67 @@ def main():
 
         posteriors = icarogw.posterior_samples.posterior_samples_catalog(posteriors)
         posteriors.pixelize(nside)
+        tot_gw_events = len(gwfish_obs)
         
     else:
         # check if the pickle samples are in place, otherwise compute
-        filename = 'gw_data/gwfish_results_resampled/samples_from_gwfish_1e4events_SNR%s_rs%s_nside%s_%s.pkl' %(snr_thr, random_seed_gw_run, nside, gw_lbl)
-
-        if os.path.isfile(filename):
-            with open(filename, 'rb') as f:
-                samples_tmvn = pickle.load(f)
-            print(f"Loaded: {filename}")
-        else:
+        filename = '/storage/gpfs_data/eintls/BBH_cosmo_sim/gw_data/gwfish_results_resampled/samples_from_gwfish_1e4events_SNR%s_rs%s_nside%s_%s.pkl' %(snr_thr, random_seed_gw_run, nside, gw_lbl)  
+        if not os.path.isfile(filename):
+            # Results from Fisher runs
+            error_file = '/storage/gpfs_data/eintls/BBH_cosmo_sim/gw_data/gwfish_results_raw/Errors_ET_cryo_10_bbh_1e4_events_rs%s_nside%s_%s_SNR%s.txt' %(random_seed_gw_run, nside, gw_lbl, snr_thr)
+            fisher_file = '/storage/gpfs_data/eintls/BBH_cosmo_sim/gw_data/gwfish_results_raw/fisher_matrices_ET_cryo_10_bbh_1e4_events_rs%s_nside%s_%s_SNR%s.npy' %(random_seed_gw_run, nside, gw_lbl, snr_thr)
+            inv_fisher_file = '/storage/gpfs_data/eintls/BBH_cosmo_sim/gw_data/gwfish_results_raw/inv_fisher_matrices_ET_cryo_10_bbh_1e4_events_rs%s_nside%s_%s_SNR%s.npy' %(random_seed_gw_run, nside, gw_lbl, snr_thr)
             print(f"Generating samples for: {filename}")
             get_tmvn_samples_from_gwfish_results(error_file, fisher_file, inv_fisher_file, random_seed_run=random_seed_gw_run, snr_thr=snr_thr, nside=nside, hi_probability=gw_lbl)
-            with open(filename, 'rb') as f:
+
+        with open(filename, 'rb') as f:
                 samples_tmvn = pickle.load(f)
-            print(f"Loaded: {filename}")
-            
+        print(f"Loaded: {filename}")  
+        event_keys = list(samples_tmvn.keys())
+
+        if num_gw_obs_events is not None:
+            if num_gw_obs_events < 0:
+                raise ValueError("num_gw_obs_events must be non-negative or None (all available events)")
+
+            if random_event_selection:
+                rng = np.random.default_rng(event_selection_seed)
+                number_to_select = min(num_gw_obs_events, len(event_keys))
+                event_keys = list(
+                    rng.choice(
+                        event_keys,
+                        size=number_to_select,
+                        replace=False
+                    )
+                )
+                print('Keys of selected events: ', event_keys)
+            else:
+                event_keys = event_keys[:num_gw_obs_events]
+
+
         posteriors = {}
-        for key in samples_tmvn:
-            posterior_dict = {'luminosity_distance':samples_tmvn[key][2,:],
-                            'right_ascension':samples_tmvn[key][4,:],
-                            'declination':samples_tmvn[key][5,:]}
+        for catalog_index, event_key in enumerate(event_keys):
+            event_samples = samples_tmvn[event_key]
+
+            posterior_dict = {
+                'luminosity_distance': event_samples[2, :],
+                'right_ascension': event_samples[4, :],
+                'declination': event_samples[5, :]
+            }
 
             prior = np.ones_like(posterior_dict['luminosity_distance'])
             
-            posteriors[str(key)] = icarogw.posterior_samples.posterior_samples(posterior_dict, prior)
+            posteriors[str(catalog_index)] = icarogw.posterior_samples.posterior_samples(posterior_dict, prior)
 
         posteriors = icarogw.posterior_samples.posterior_samples_catalog(posteriors)
         posteriors.pixelize(nside)
-    ##########################################################################
+        print(f"Using {len(posteriors.posterior_samples_dict)} events")
+        tot_gw_events = len(event_keys)
 
+    if num_gw_obs_events == None:
+        num_gw_obs_events_tag = 'all_events_' + str(tot_gw_events)
+    else:
+        num_gw_obs_events_tag = num_gw_obs_events
+    ##########################################################################
 
 
     ##########################################################################
@@ -191,11 +248,11 @@ def main():
                 'gamma':bilby.prior.Uniform(0.,12.),
                 'kappa':bilby.prior.Uniform(0.,12.),
                 'zp':bilby.prior.Uniform(0.,4.),
-                'alphaGW':0.,
-                'bGW':1.}
+                'bGW':1.,
+                'alphaGW':0.}
 
-    result=bilby.run_sampler(likelihood, priors_dict, sampler='nessai', nlive=1000, npool=6, 
-                            outdir='results/cosmoPEs_snr%s_rs%s_nside%s_%s%s_%s' %(snr_thr, random_seed_gw_run, nside, gw_lbl, cosmoPE_lbl, additional_tag))
+    result=bilby.run_sampler(likelihood, priors_dict, sampler='nessai', nlive=1000, npool=12, 
+                            outdir='/storage/gpfs_data/eintls/BBH_cosmo_sim/results/cosmoPEs_snr%s_rs%s_nside%s_%s%s_%s_varying_bias' %(snr_thr, random_seed_gw_run, nside, gw_lbl, cosmoPE_lbl, additional_tag))
     result.plot_corner()
     ##########################################################################
 
