@@ -1,6 +1,10 @@
 dm_halos_data/
+dm_data/
 gw_data/
+foreground_data/
 results/
 hi_data/
 figures_scripts_presentations/
+HMF_with_SCAMPy.ipynb
+adding_hi_stellar_bias_end_to_end_TESTS.ipynb
 
